@@ -41,7 +41,7 @@ public class ElasticsearchDependenciesJob {
   private static final Logger log = LoggerFactory.getLogger(ElasticsearchDependenciesJob.class);
 
   private static final Map<String,String> ID = new HashMap<String,String>() {{
-    put("es.mapping.id","pk");
+    put("es.mapping.id","timestamp");
   }};
 
   public static Builder builder() {
@@ -200,14 +200,11 @@ public class ElasticsearchDependenciesJob {
     String json;
     try {
       ObjectMapper objectMapper = new ObjectMapper();
-
-      for (Dependency dependency: dependencyLinks) {
-        json = objectMapper.writeValueAsString(new ElasticsearchDependencies(dependency.getParent() + "-" + dependency.getChild(), Arrays.asList(dependency), day));
-        JavaEsSpark.saveJsonToEs(javaSparkContext.parallelize(Collections.singletonList(json)), resource,ID);
-      }
+      json = objectMapper.writeValueAsString(new ElasticsearchDependencies(dependencyLinks, day));
     } catch (JsonProcessingException e) {
       throw new IllegalStateException("Could not serialize dependencies", e);
     }
+    JavaEsSpark.saveJsonToEs(javaSparkContext.parallelize(Collections.singletonList(json)), resource,ID);
 
   }
 
@@ -215,22 +212,16 @@ public class ElasticsearchDependenciesJob {
    * Helper class used to serialize dependencies to JSON.
    */
   public static final class ElasticsearchDependencies {
-    private String pk;
     private List<Dependency> dependencies;
     private ZonedDateTime ts;
 
-    public ElasticsearchDependencies(String pk,List<Dependency> dependencies, ZonedDateTime ts) {
-      this.pk = pk;
+    public ElasticsearchDependencies(List<Dependency> dependencies, ZonedDateTime ts) {
       this.dependencies = dependencies;
       this.ts = ts;
     }
 
     public List<Dependency> getDependencies() {
       return dependencies;
-    }
-
-    public String getPk() {
-      return pk;
     }
 
     public String getTimestamp() {
