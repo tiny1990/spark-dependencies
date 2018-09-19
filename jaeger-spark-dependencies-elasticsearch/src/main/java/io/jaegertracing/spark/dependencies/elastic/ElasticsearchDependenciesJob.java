@@ -24,10 +24,8 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -41,6 +39,10 @@ import org.slf4j.LoggerFactory;
  */
 public class ElasticsearchDependenciesJob {
   private static final Logger log = LoggerFactory.getLogger(ElasticsearchDependenciesJob.class);
+
+  private static final Map<String,String> ID = new HashMap<String,String>() {{
+    put("es.mapping.id","pk");
+  }};
 
   public static Builder builder() {
     return new Builder();
@@ -184,6 +186,7 @@ public class ElasticsearchDependenciesJob {
       List<Dependency> dependencyLinks = DependenciesSparkHelper.derive(traces);
       store(sc, dependencyLinks, depResource);
       log.info("Done, {} dependency objects created and stored to {}", dependencyLinks.size(), depResource);
+      log.info("fuck the world");
     } finally {
       sc.stop();
     }
@@ -197,28 +200,37 @@ public class ElasticsearchDependenciesJob {
     String json;
     try {
       ObjectMapper objectMapper = new ObjectMapper();
-      json = objectMapper.writeValueAsString(new ElasticsearchDependencies(dependencyLinks, day));
+
+      for (Dependency dependency: dependencyLinks) {
+        json = objectMapper.writeValueAsString(new ElasticsearchDependencies(dependency.getParent() + "-" + dependency.getChild(), Arrays.asList(dependency), day));
+        JavaEsSpark.saveJsonToEs(javaSparkContext.parallelize(Collections.singletonList(json)), resource,ID);
+      }
     } catch (JsonProcessingException e) {
       throw new IllegalStateException("Could not serialize dependencies", e);
     }
 
-    JavaEsSpark.saveJsonToEs(javaSparkContext.parallelize(Collections.singletonList(json)), resource);
   }
 
   /**
    * Helper class used to serialize dependencies to JSON.
    */
   public static final class ElasticsearchDependencies {
+    private String pk;
     private List<Dependency> dependencies;
     private ZonedDateTime ts;
 
-    public ElasticsearchDependencies(List<Dependency> dependencies, ZonedDateTime ts) {
+    public ElasticsearchDependencies(String pk,List<Dependency> dependencies, ZonedDateTime ts) {
+      this.pk = pk;
       this.dependencies = dependencies;
       this.ts = ts;
     }
 
     public List<Dependency> getDependencies() {
       return dependencies;
+    }
+
+    public String getPk() {
+      return pk;
     }
 
     public String getTimestamp() {
